@@ -12,7 +12,7 @@ A summary of the planning work so far, so it can continue on another machine. La
 | `implementation-plan.md` | Work phases 1–8 with checkboxes (written by the user) | Not changed yet; gaps listed below |
 | `history.md` | This file | — |
 
-No code has been written yet.
+**2026-11-20:** Phase 1 scaffolding is done. It is a Bun monorepo: `client/` has React, Vite, Tailwind and React Router; `server/` has Express and Prisma 7. Typecheck and build pass. PostgreSQL 18 is installed as a Windows service (winget), and the first migration (`init`) is applied. `/api/health` returns ok. On a new machine, install PostgreSQL (or Docker), create the `helpdesk` role and database (see `CLAUDE.md`), then run `bun run db:migrate`. Commands are in `CLAUDE.md`.
 
 ## Decisions
 

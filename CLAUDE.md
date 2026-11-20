@@ -10,16 +10,66 @@ The full scope, features, SLA, and decisions are in [project-scope.md](project-s
 
 ## Status
 
-Planning stage. There is no code yet. Once the project is set up, add the build, run, test, and lint commands to this file.
+Phase 1 (project setup) is done. Next is Phase 2 (authentication).
 
 Work follows the phases in [implementation-plan.md](implementation-plan.md), in order. Work on one phase at a time. When a task is done, mark its checkbox (`- [x]`). Do not start work from a later phase unless asked.
+
+## Project Structure
+
+Bun workspaces monorepo:
+
+- `client/`: React 19 + TypeScript (Vite 8), Tailwind CSS v4 (through the `@tailwindcss/vite` plugin, no config file), React Router (declarative mode with `BrowserRouter`)
+  - `src/main.tsx`: wraps the app in `BrowserRouter`
+  - `src/App.tsx`: defines the routes and shows an API health banner on every page. It calls `/api/health` on load and handles four states: loading, ok, database down (503), and server unreachable.
+  - `src/pages/`: page components (`HomePage`, `NotFoundPage`)
+- `server/`: Express 5 + TypeScript, running on Bun
+  - `src/index.ts`: starts the server
+  - `src/app.ts`: the Express app and routes. `GET /api/health` returns `{ status, database }`: 200 when the database responds, 503 when it doesn't.
+  - `src/env.ts`: reads environment variables and fails at startup if a required one is missing. Use `env` from this file instead of reading `process.env` directly.
+  - `src/db.ts`: the shared Prisma client (`prisma`), using the `@prisma/adapter-pg` driver adapter
+- `server/prisma/`:
+  - `schema.prisma`: the database schema (`User`, `Session`, `Ticket`)
+  - `migrations/`: migration history. Commit it, and never edit an applied migration.
+  - The Prisma 7 config is in `server/prisma.config.ts`, and the generated client goes to `server/src/generated/prisma` (git-ignored). Import it from `./generated/prisma/client.ts`, not from `@prisma/client`.
+- `docker-compose.yml`: optional PostgreSQL in Docker
+
+In development, Vite proxies `/api/*` to the server on port 3000, so the client calls the API with relative URLs (`fetch('/api/...')`).
+
+Schema notes:
+- Enum values are uppercase (`OPEN`, `IN_PROGRESS`, `COURSE_CONTENT`, `URGENT`, ...). They map to the domain names in the Domain Reference below.
+- Users are deactivated (`isActive = false`), never deleted, so audit history stays intact.
+- `Ticket.category` is null until AI classification runs or an agent sets it.
+- `Session.id` is the random token that goes in the session cookie.
+
+## Commands
+
+Run these from the repo root:
+
+- `bun install`: install all workspaces
+- `bun run dev`: start client (http://localhost:5173) and server (http://localhost:3000) together
+- `bun run dev:client` / `bun run dev:server`: start one of them
+- `bun run build`: build both
+- `bun run typecheck`: type-check both
+- `bun run db:up`: start PostgreSQL in Docker
+- `bun run db:migrate`: create and apply a migration (`prisma migrate dev`)
+- `bun run db:generate`: regenerate the Prisma client after a schema change
+- `bun run db:studio`: open Prisma Studio
+- `cd server && bun test`: run server tests
+
+Setup: copy `server/.env.example` to `server/.env`. Bun loads `.env` automatically.
+
+Database: PostgreSQL 18 runs either as a local Windows service (`postgresql-x64-18`, installed with winget) or in Docker (`bun run db:up`). Both use the same connection string: user `helpdesk`, password `helpdesk`, database `helpdesk`, on `localhost:5432`. The `helpdesk` role has `CREATEDB`, which `prisma migrate dev` needs for its shadow database.
+
+**Windows note:** call CLIs in package scripts through Bun (`bun --bun tsc`, `bun --bun vite`, `bunx prisma`), not directly. Bun's Windows `.exe` shims fail with `bun: unknown error` for TypeScript 7 and Vite.
+
+**Prisma version:** keep `prisma` and `@prisma/client` on the same version (currently 7.10.1). `bun add prisma` without a version installs an 8.0 release candidate. Ignore the Prisma CLI notice that suggests upgrading to it.
 
 ## Tech Stack
 
 The stack is defined in [tech-stack.md](tech-stack.md). Stick to it, and ask before adding a new framework or major library.
 
 - **Frontend:** React + TypeScript, Tailwind CSS, React Router
-- **Backend:** Node.js + Express + TypeScript, with authentication through database sessions (not JWT)
+- **Backend:** Express + TypeScript on the Bun runtime (Bun is also the package manager and test runner), with authentication through database sessions (not JWT)
 - **Database:** PostgreSQL with Prisma
 - **AI:** Claude API (Anthropic SDK, `@anthropic-ai/sdk`)
 - **Email:** SendGrid or Mailgun, for outbound replies and inbound webhooks

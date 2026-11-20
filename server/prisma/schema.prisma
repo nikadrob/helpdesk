@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  AGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketCategory {
+  TECHNICAL
+  BILLING
+  COURSE_CONTENT
+  ACCOUNT
+  REFUND
+  OTHER
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role      @default(AGENT)
+  // Users are deactivated, never deleted, so audit history stays intact.
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions        Session[]
+  assignedTickets Ticket[]  @relation("AssignedTickets")
+}
+
+model Session {
+  // Random token stored in an HTTP-only cookie.
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Ticket {
+  id           String          @id @default(cuid())
+  subject      String
+  body         String
+  senderEmail  String
+  senderName   String?
+  status       TicketStatus    @default(OPEN)
+  // Null until AI classification runs or an agent sets it.
+  category     TicketCategory?
+  priority     TicketPriority  @default(NORMAL)
+  assignedToId String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  assignedTo User? @relation("AssignedTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([category])
+  @@index([assignedToId])
+  @@index([createdAt])
+}
