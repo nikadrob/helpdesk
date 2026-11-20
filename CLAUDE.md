@@ -60,6 +60,8 @@ Setup: copy `server/.env.example` to `server/.env`. Bun loads `.env` automatical
 
 Database: PostgreSQL 18 runs either as a local Windows service (`postgresql-x64-18`, installed with winget) or in Docker (`bun run db:up`). Both use the same connection string: user `helpdesk`, password `helpdesk`, database `helpdesk`, on `localhost:5432`. The `helpdesk` role has `CREATEDB`, which `prisma migrate dev` needs for its shadow database.
 
+Database admin (local development only, for pgAdmin and administrative tasks): user `postgres`, password `postgres`. The app itself always connects as `helpdesk`.
+
 **Windows note:** call CLIs in package scripts through Bun (`bun --bun tsc`, `bun --bun vite`, `bunx prisma`), not directly. Bun's Windows `.exe` shims fail with `bun: unknown error` for TypeScript 7 and Vite.
 
 **Prisma version:** keep `prisma` and `@prisma/client` on the same version (currently 7.10.1). `bun add prisma` without a version installs an 8.0 release candidate. Ignore the Prisma CLI notice that suggests upgrading to it.
