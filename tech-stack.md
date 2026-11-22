@@ -5,6 +5,7 @@
 - React with TypeScript
 - Tailwind CSS
 - React Router
+- React Hook Form with Zod for forms and validation
 
 ## Backend
 

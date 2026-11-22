@@ -10,7 +10,7 @@ The full scope, features, SLA, and decisions are in [project-scope.md](project-s
 
 ## Status
 
-Phase 1 (project setup) is done. Phase 2 (authentication) is in progress: the server side (login, logout, session middleware) is done, and the login page and frontend route protection are next.
+Phases 1 (project setup) and 2 (authentication) are done. Phase 3 (user management) is next.
 
 Work follows the phases in [implementation-plan.md](implementation-plan.md), in order. Work on one phase at a time. When a task is done, mark its checkbox (`- [x]`). Do not start work from a later phase unless asked.
 
@@ -21,7 +21,10 @@ Bun workspaces monorepo:
 - `client/`: React 19 + TypeScript (Vite 8), Tailwind CSS v4 (through the `@tailwindcss/vite` plugin, no config file), React Router (declarative mode with `BrowserRouter`)
   - `src/main.tsx`: wraps the app in `BrowserRouter`
   - `src/App.tsx`: defines the routes and shows an API health banner on every page. It calls `/api/health` on load and handles four states: loading, ok, database down (503), and server unreachable.
-  - `src/pages/`: page components (`HomePage`, `NotFoundPage`)
+  - `src/lib/auth-client.ts`: the Better Auth React client (`useSession`, `signIn`, `signOut`). It uses the default `/api/auth` path on the current origin.
+  - `src/components/ProtectedRoute.tsx`: layout route that redirects to `/login` when there is no session (passing the original path in `state.from`). Put routes that need a signed-in user inside it.
+  - `src/components/Navbar.tsx`: shows the signed-in user's name and a Sign out button.
+  - `src/pages/`: page components (`LoginPage`, `HomePage`, `NotFoundPage`). After sign-in, `LoginPage` redirects to `state.from` or `/`; a signed-in user who opens `/login` is redirected too.
 - `server/`: Express 5 + TypeScript, running on Bun
   - `src/index.ts`: starts the server
   - `src/app.ts`: the Express app and routes. `GET /api/health` returns `{ status, database }`: 200 when the database responds, 503 when it doesn't.
@@ -75,7 +78,7 @@ Database admin (local development only, for pgAdmin and administrative tasks): u
 
 The stack is defined in [tech-stack.md](tech-stack.md). Stick to it, and ask before adding a new framework or major library.
 
-- **Frontend:** React + TypeScript, Tailwind CSS, React Router
+- **Frontend:** React + TypeScript, Tailwind CSS, React Router, React Hook Form + Zod (forms and validation, through `@hookform/resolvers`)
 - **Backend:** Express + TypeScript on the Bun runtime (Bun is also the package manager and test runner), with authentication through Better Auth (`better-auth`, pinned to 1.7.27) using database sessions (not JWT)
 - **Database:** PostgreSQL with Prisma
 - **AI:** Claude API (Anthropic SDK, `@anthropic-ai/sdk`)

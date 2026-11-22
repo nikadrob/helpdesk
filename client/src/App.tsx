@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Route, Routes } from 'react-router'
+import Navbar from './components/Navbar.tsx'
+import ProtectedRoute from './components/ProtectedRoute.tsx'
 import HomePage from './pages/HomePage.tsx'
+import LoginPage from './pages/LoginPage.tsx'
 import NotFoundPage from './pages/NotFoundPage.tsx'
 
 type Health = { status: string; database: string }
@@ -32,8 +35,12 @@ export default function App() {
   return (
     <>
       <HealthMessage state={state} />
+      <Navbar />
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path="/" element={<HomePage />} />
+        </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </>
