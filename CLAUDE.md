@@ -10,7 +10,7 @@ The full scope, features, SLA, and decisions are in [project-scope.md](project-s
 
 ## Status
 
-Phase 1 (project setup) is done. Next is Phase 2 (authentication).
+Phase 1 (project setup) is done. Phase 2 (authentication) is in progress: the server side (login, logout, session middleware) is done, and the login page and frontend route protection are next.
 
 Work follows the phases in [implementation-plan.md](implementation-plan.md), in order. Work on one phase at a time. When a task is done, mark its checkbox (`- [x]`). Do not start work from a later phase unless asked.
 
@@ -27,8 +27,12 @@ Bun workspaces monorepo:
   - `src/app.ts`: the Express app and routes. `GET /api/health` returns `{ status, database }`: 200 when the database responds, 503 when it doesn't.
   - `src/env.ts`: reads environment variables and fails at startup if a required one is missing. Use `env` from this file instead of reading `process.env` directly.
   - `src/db.ts`: the shared Prisma client (`prisma`), using the `@prisma/adapter-pg` driver adapter
+  - `src/auth/auth.ts`: the Better Auth instance (email/password, database sessions through the Prisma adapter, no cookie cache). Public sign-up is disabled, `role` and `isActive` are server-only user fields, and a session hook blocks sign-in for deactivated users. Its handler is mounted at `/api/auth/*` in `app.ts`, **before** `express.json()`. Endpoints: `POST /api/auth/sign-in/email`, `POST /api/auth/sign-out`, `GET /api/auth/get-session`.
+  - `src/auth/middleware.ts`: `requireAuth` checks the session with `auth.api.getSession` and sets `req.user`. `GET /api/me` is an example protected route.
+  - `src/auth/users.ts`: `upsertUserWithPassword` creates or updates a user with a credential account (public sign-up is disabled). Used by the seed and the tests.
+  - `src/auth/auth.test.ts`: integration tests for the auth flow. They need the database running and clean up their own test user.
 - `server/prisma/`:
-  - `schema.prisma`: the database schema (`User`, `Session`, `Ticket`)
+  - `schema.prisma`: the database schema (`User`, `Session`, `Account`, `Verification`, `Ticket`). `Session`, `Account`, and `Verification` follow Better Auth's core schema. After changing auth config or plugins, check that the schema still matches what Better Auth expects.
   - `migrations/`: migration history. Commit it, and never edit an applied migration.
   - The Prisma 7 config is in `server/prisma.config.ts`, and the generated client goes to `server/src/generated/prisma` (git-ignored). Import it from `./generated/prisma/client.ts`, not from `@prisma/client`.
 - `docker-compose.yml`: optional PostgreSQL in Docker
@@ -39,7 +43,7 @@ Schema notes:
 - Enum values are uppercase (`OPEN`, `IN_PROGRESS`, `COURSE_CONTENT`, `URGENT`, ...). They map to the domain names in the Domain Reference below.
 - Users are deactivated (`isActive = false`), never deleted, so audit history stays intact.
 - `Ticket.category` is null until AI classification runs or an agent sets it.
-- `Session.id` is the random token that goes in the session cookie.
+- `Session.token` is the random token in the session cookie (`better-auth.session_token`). Passwords are not on `User`; they are in an `Account` row with `providerId = "credential"`.
 
 ## Commands
 
@@ -54,9 +58,10 @@ Run these from the repo root:
 - `bun run db:migrate`: create and apply a migration (`prisma migrate dev`)
 - `bun run db:generate`: regenerate the Prisma client after a schema change
 - `bun run db:studio`: open Prisma Studio
-- `cd server && bun test`: run server tests
+- `bun run db:seed`: create or update the first admin from `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_NAME` in `server/.env`
+- `cd server && bun test`: run server tests (the auth tests need the database running)
 
-Setup: copy `server/.env.example` to `server/.env`. Bun loads `.env` automatically.
+Setup: copy `server/.env.example` to `server/.env` and set `BETTER_AUTH_SECRET` (`openssl rand -base64 32`). Bun loads `.env` automatically.
 
 Database: PostgreSQL 18 runs either as a local Windows service (`postgresql-x64-18`, installed with winget) or in Docker (`bun run db:up`). Both use the same connection string: user `helpdesk`, password `helpdesk`, database `helpdesk`, on `localhost:5432`. The `helpdesk` role has `CREATEDB`, which `prisma migrate dev` needs for its shadow database.
 
@@ -71,7 +76,7 @@ Database admin (local development only, for pgAdmin and administrative tasks): u
 The stack is defined in [tech-stack.md](tech-stack.md). Stick to it, and ask before adding a new framework or major library.
 
 - **Frontend:** React + TypeScript, Tailwind CSS, React Router
-- **Backend:** Express + TypeScript on the Bun runtime (Bun is also the package manager and test runner), with authentication through database sessions (not JWT)
+- **Backend:** Express + TypeScript on the Bun runtime (Bun is also the package manager and test runner), with authentication through Better Auth (`better-auth`, pinned to 1.7.27) using database sessions (not JWT)
 - **Database:** PostgreSQL with Prisma
 - **AI:** Claude API (Anthropic SDK, `@anthropic-ai/sdk`)
 - **Email:** SendGrid or Mailgun, for outbound replies and inbound webhooks

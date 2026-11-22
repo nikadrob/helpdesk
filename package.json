@@ -11,6 +11,7 @@
     "db:up": "docker compose up -d db",
     "db:migrate": "bun --filter server db:migrate",
     "db:generate": "bun --filter server db:generate",
-    "db:studio": "bun --filter server db:studio"
+    "db:studio": "bun --filter server db:studio",
+    "db:seed": "bun --filter server db:seed"
   }
 }

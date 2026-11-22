@@ -9,7 +9,7 @@
 ## Backend
 
 - Node.js with Express and TypeScript
-- Database sessions for authentication
+- Better Auth (email/password) with database sessions for authentication
 
 ## Database
 
