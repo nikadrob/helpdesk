@@ -20,10 +20,13 @@ Bun workspaces monorepo:
 
 - `client/`: React 19 + TypeScript (Vite 8), Tailwind CSS v4 (through the `@tailwindcss/vite` plugin, no config file), React Router (declarative mode with `BrowserRouter`)
   - `src/main.tsx`: wraps the app in `BrowserRouter`
-  - `src/App.tsx`: defines the routes and shows an API health banner on every page. It calls `/api/health` on load and handles four states: loading, ok, database down (503), and server unreachable.
+  - `src/App.tsx`: defines the routes and shows an API health banner on every page. It calls `/api/health` on load and handles four states: loading, ok, database down (503), and server unreachable. The banner uses theme colors and an icon per state (muted while loading, primary when ok, destructive when the database or server is down).
+  - shadcn/ui (`components.json`: `base-nova` style on Base UI, neutral base color, lucide icons). Add components with `bunx --bun shadcn@latest add <name>`; they land in `src/components/ui/` and can be edited. The theme is the CSS variables in `src/index.css` (`:root` for light, `.dark` for dark): neutral grays with a blue primary (`blue-600` in light, `blue-500` in dark). Use theme colors (`bg-background`, `text-muted-foreground`, `text-destructive`, ...) instead of fixed Tailwind colors.
+  - Import alias: `@/` maps to `src/` (in `tsconfig.json`, `tsconfig.app.json`, and `vite.config.ts`).
   - `src/lib/auth-client.ts`: the Better Auth React client (`useSession`, `signIn`, `signOut`). It uses the default `/api/auth` path on the current origin.
   - `src/components/ProtectedRoute.tsx`: layout route that redirects to `/login` when there is no session (passing the original path in `state.from`). Put routes that need a signed-in user inside it.
-  - `src/components/Navbar.tsx`: shows the signed-in user's name and a Sign out button.
+  - `src/components/Navbar.tsx`: the top bar on every page: the HelpDesk label on the left; on the right the signed-in user's name, a Sign out button, and the theme switch (the switch also shows when signed out).
+  - Light/dark theme: light by default. `src/lib/theme.ts` (`getTheme`, `setTheme`) toggles the `dark` class on `<html>` and saves the choice in `localStorage` (`theme`). `src/components/ThemeToggle.tsx` is the sun/moon button. An inline script in `client/index.html` applies the saved theme before React renders, so there is no flash.
   - `src/pages/`: page components (`LoginPage`, `HomePage`, `NotFoundPage`). After sign-in, `LoginPage` redirects to `state.from` or `/`; a signed-in user who opens `/login` is redirected too.
 - `server/`: Express 5 + TypeScript, running on Bun
   - `src/index.ts`: starts the server
@@ -48,6 +51,30 @@ Schema notes:
 - `Ticket.category` is null until AI classification runs or an agent sets it.
 - `Session.token` is the random token in the session cookie (`better-auth.session_token`). Passwords are not on `User`; they are in an `Account` row with `providerId = "credential"`.
 
+## Authentication
+
+Better Auth (1.7.27) with email/password and database sessions (no JWT). The server and the React client both use the `better-auth` package, at the same pinned version.
+
+How it works:
+- **Sign-in:** `LoginPage` validates the form with Zod, then calls `signIn.email({ email, password })` → `POST /api/auth/sign-in/email`. On success, Better Auth creates a `Session` row and sets the `better-auth.session_token` cookie (HTTP-only). The page then navigates to `state.from` or `/`.
+- **Sessions:** valid for 7 days, extended at most once a day while in use. There is no cookie cache, so every session check reads the database. Signing out (`signOut()` → `POST /api/auth/sign-out`) deletes the session row.
+- **Same origin:** the client calls `/api/auth/*` on its own origin. Vite proxies it to the server in development, so the cookie is first-party and no CORS setup is needed. `TRUSTED_ORIGINS` (default `http://localhost:5173`) lists the origins Better Auth accepts requests from; set it for each deployed client URL. `BETTER_AUTH_URL` is the server's public base URL.
+- **Who can sign in:** there is no public sign-up. Users are created with `upsertUserWithPassword` (`src/auth/users.ts`): the seed creates the first admin now, and the admin UI will in Phase 3. It normalizes the email (trim, lowercase), hashes the password with Better Auth's own hasher, and stores it in the `credential` `Account`. Upserting reactivates a user and resets their password.
+- **Deactivation:** a deactivated user (`isActive = false`) can't sign in, because the session-create hook refuses it. `requireAuth` also rejects existing sessions of deactivated users, so it takes effect on their next request. When deactivating a user (Phase 3), also delete their sessions.
+- **Roles:** `role` (`ADMIN` | `AGENT`, default `AGENT`) and `isActive` are Better Auth additional fields with `input: false`, so clients can't set them through auth endpoints. Role checks (admin-only routes) are Phase 3 and must be done on the server.
+
+How to use it:
+- **Protect an API route:** add the `requireAuth` middleware, then read `req.user` (`id`, `email`, `name`, `role`, `isActive`). It responds `401 { error: "Unauthorized" }` when there is no valid session.
+- **Protect a page:** put its `<Route>` inside the `<Route element={<ProtectedRoute />}>` group in `App.tsx`. This only affects the UI; the API must still use `requireAuth`.
+- **Current user in the UI:** `const { data: session, isPending } = useSession()` from `@/lib/auth-client`; `session.user.name` etc. It updates automatically after sign-in and sign-out.
+- **Error messages:** the login form shows the same "Invalid email or password." for a wrong password, an unknown email, and a deactivated account, so it doesn't reveal which accounts exist. Keep it that way.
+
+Gotchas:
+- Mount the Better Auth handler **before** `express.json()`; it reads the raw body.
+- `/api/auth/sign-up/email` is disabled on purpose (404). Don't re-enable it to create users.
+- Changing auth config or adding plugins can change the tables Better Auth expects; check `schema.prisma` and migrate.
+- To test sign-in without the browser, send requests through the Vite proxy (`http://localhost:5173/api/auth/...`) with an `Origin: http://localhost:5173` header on `POST` requests; Better Auth's origin check can reject them otherwise.
+
 ## Commands
 
 Run these from the repo root:
@@ -62,6 +89,7 @@ Run these from the repo root:
 - `bun run db:generate`: regenerate the Prisma client after a schema change
 - `bun run db:studio`: open Prisma Studio
 - `bun run db:seed`: create or update the first admin from `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_NAME` in `server/.env`
+- `cd client && bunx --bun shadcn@latest add <component>`: add a shadcn/ui component
 - `cd server && bun test`: run server tests (the auth tests need the database running)
 
 Setup: copy `server/.env.example` to `server/.env` and set `BETTER_AUTH_SECRET` (`openssl rand -base64 32`). Bun loads `.env` automatically.
@@ -78,7 +106,7 @@ Database admin (local development only, for pgAdmin and administrative tasks): u
 
 The stack is defined in [tech-stack.md](tech-stack.md). Stick to it, and ask before adding a new framework or major library.
 
-- **Frontend:** React + TypeScript, Tailwind CSS, React Router, React Hook Form + Zod (forms and validation, through `@hookform/resolvers`)
+- **Frontend:** React + TypeScript, Tailwind CSS, React Router, shadcn/ui, React Hook Form + Zod (forms and validation, through `@hookform/resolvers`)
 - **Backend:** Express + TypeScript on the Bun runtime (Bun is also the package manager and test runner), with authentication through Better Auth (`better-auth`, pinned to 1.7.27) using database sessions (not JWT)
 - **Database:** PostgreSQL with Prisma
 - **AI:** Claude API (Anthropic SDK, `@anthropic-ai/sdk`)

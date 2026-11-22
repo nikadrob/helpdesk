@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
+import { CircleCheck, CircleX, LoaderCircle, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
+import { cn } from '@/lib/utils'
 import Navbar from './components/Navbar.tsx'
 import ProtectedRoute from './components/ProtectedRoute.tsx'
 import HomePage from './pages/HomePage.tsx'
@@ -47,31 +49,54 @@ export default function App() {
   )
 }
 
+type BannerTone = 'muted' | 'primary' | 'destructive'
+
+const toneClasses: Record<BannerTone, string> = {
+  muted: 'bg-muted text-muted-foreground',
+  primary: 'bg-primary/10 text-primary',
+  destructive: 'bg-destructive/10 text-destructive',
+}
+
+function Banner({ tone, icon: Icon, children }: { tone: BannerTone; icon: LucideIcon; children: ReactNode }) {
+  return (
+    <div role="status" className={cn('border-b px-4 py-2 text-sm', toneClasses[tone])}>
+      <div className="mx-auto flex max-w-5xl items-center gap-2">
+        <Icon className={cn('size-4 shrink-0', Icon === LoaderCircle && 'animate-spin')} aria-hidden />
+        <span>{children}</span>
+      </div>
+    </div>
+  )
+}
+
 function HealthMessage({ state }: { state: HealthState }) {
   if (state.kind === 'loading') {
-    return <div className="bg-gray-100 px-4 py-2 text-sm text-gray-600">Checking API…</div>
+    return (
+      <Banner tone="muted" icon={LoaderCircle}>
+        Checking API…
+      </Banner>
+    )
   }
 
   if (state.kind === 'error') {
     return (
-      <div className="bg-red-100 px-4 py-2 text-sm text-red-800">
+      <Banner tone="destructive" icon={CircleX}>
         Cannot reach the API. Is the server running?
-      </div>
+      </Banner>
     )
   }
 
   const { health } = state
   if (health.status === 'ok') {
     return (
-      <div className="bg-green-100 px-4 py-2 text-sm text-green-800">
+      <Banner tone="primary" icon={CircleCheck}>
         API is running and the database is connected.
-      </div>
+      </Banner>
     )
   }
 
   return (
-    <div className="bg-amber-100 px-4 py-2 text-sm text-amber-800">
+    <Banner tone="destructive" icon={TriangleAlert}>
       API is running, but the database is {health.database}.
-    </div>
+    </Banner>
   )
 }

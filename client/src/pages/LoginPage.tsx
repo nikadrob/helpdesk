@@ -3,7 +3,12 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Navigate, useLocation, useNavigate } from 'react-router'
 import { z } from 'zod'
-import { signIn, useSession } from '../lib/auth-client.ts'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { signIn, useSession } from '@/lib/auth-client'
 
 const loginSchema = z.object({
   email: z.email('Enter a valid email address.'),
@@ -11,11 +16,6 @@ const loginSchema = z.object({
 })
 
 type LoginForm = z.infer<typeof loginSchema>
-
-const inputClass =
-  'mt-1 w-full rounded-md border px-3 py-2 text-sm focus:ring-1 focus:outline-none'
-const inputOk = 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-const inputError = 'border-red-500 focus:border-red-500 focus:ring-red-500'
 
 export default function LoginPage() {
   const { data: session, isPending } = useSession()
@@ -35,7 +35,7 @@ export default function LoginPage() {
   const from = (location.state as { from?: string } | null)?.from ?? '/'
 
   if (isPending) {
-    return <div className="p-8 text-sm text-gray-500">Loading…</div>
+    return <div className="p-8 text-sm text-muted-foreground">Loading…</div>
   }
 
   // Already signed in: no reason to show the form.
@@ -59,56 +59,51 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-[70vh] items-center justify-center px-4">
-      <form
-        noValidate
-        onSubmit={handleSubmit(onSubmit)}
-        className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
-      >
-        <h1 className="text-2xl font-bold text-gray-900">Sign in</h1>
-        <p className="mt-1 text-sm text-gray-600">Sign in to your HelpDesk account.</p>
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-xl">Sign in</CardTitle>
+          <CardDescription>Sign in to your HelpDesk account.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form noValidate onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+            {serverError && (
+              <Alert variant="destructive">
+                <AlertDescription>{serverError}</AlertDescription>
+              </Alert>
+            )}
 
-        {serverError && (
-          <div role="alert" className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
-            {serverError}
-          </div>
-        )}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                aria-invalid={errors.email ? true : undefined}
+                {...register('email')}
+              />
+              {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+            </div>
 
-        <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="email">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          aria-invalid={errors.email ? true : undefined}
-          className={`${inputClass} ${errors.email ? inputError : inputOk}`}
-          {...register('email')}
-        />
-        {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                aria-invalid={errors.password ? true : undefined}
+                {...register('password')}
+              />
+              {errors.password && (
+                <p className="text-sm text-destructive">{errors.password.message}</p>
+              )}
+            </div>
 
-        <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="password">
-          Password
-        </label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          aria-invalid={errors.password ? true : undefined}
-          className={`${inputClass} ${errors.password ? inputError : inputOk}`}
-          {...register('password')}
-        />
-        {errors.password && (
-          <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
-        )}
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="mt-6 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {isSubmitting ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+            <Button type="submit" disabled={isSubmitting} className="mt-2 w-full">
+              {isSubmitting ? 'Signing in…' : 'Sign in'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </main>
   )
 }

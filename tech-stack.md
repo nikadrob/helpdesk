@@ -4,6 +4,7 @@
 
 - React with TypeScript
 - Tailwind CSS
+- shadcn/ui (Base UI primitives, default `base-nova` style, neutral theme)
 - React Router
 - React Hook Form with Zod for forms and validation
 

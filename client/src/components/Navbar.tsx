@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { signOut, useSession } from '../lib/auth-client.ts'
+import ThemeToggle from '@/components/ThemeToggle'
+import { Button } from '@/components/ui/button'
+import { signOut, useSession } from '@/lib/auth-client'
 
 export default function Navbar() {
   const { data: session } = useSession()
@@ -15,24 +17,22 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="border-b border-gray-200 bg-white">
+    <nav className="border-b bg-background">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link to="/" className="text-lg font-semibold text-gray-900">
+        <Link to="/" className="text-lg font-semibold">
           HelpDesk
         </Link>
-        {session && (
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-700">{session.user.name}</span>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              disabled={signingOut}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              {signingOut ? 'Signing out…' : 'Sign out'}
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-4">
+          {session && (
+            <>
+              <span className="text-sm text-muted-foreground">{session.user.name}</span>
+              <Button variant="outline" onClick={handleSignOut} disabled={signingOut}>
+                {signingOut ? 'Signing out…' : 'Sign out'}
+              </Button>
+            </>
+          )}
+          <ThemeToggle />
+        </div>
       </div>
     </nav>
   )
