@@ -4,12 +4,14 @@
 
 - React with TypeScript
 - Tailwind CSS
+- shadcn/ui (Base UI primitives, default `base-nova` style, neutral theme)
 - React Router
+- React Hook Form with Zod for forms and validation
 
 ## Backend
 
 - Node.js with Express and TypeScript
-- Database sessions for authentication
+- Better Auth (email/password) with database sessions for authentication
 
 ## Database
 
