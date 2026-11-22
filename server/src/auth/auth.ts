@@ -9,6 +9,9 @@ export const auth = betterAuth({
   trustedOrigins: env.TRUSTED_ORIGINS,
   database: prismaAdapter(prisma, { provider: "postgresql" }),
 
+  // No public sign-up route at all (404). disableSignUp below is a second safeguard.
+  disabledPaths: ["/sign-up/email"],
+
   emailAndPassword: {
     enabled: true,
     // No public sign-up: admins create users (Phase 3); the first admin comes from the seed script.

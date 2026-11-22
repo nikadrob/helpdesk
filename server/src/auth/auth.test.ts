@@ -70,13 +70,13 @@ describe("auth flow", () => {
     expect(res.status).toBe(401);
   });
 
-  test("public sign-up is disabled", async () => {
+  test("public sign-up endpoint does not exist", async () => {
     const res = await post("/api/auth/sign-up/email", {
       email: "someone-new@example.test",
       password: "some-password-123",
       name: "New",
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
     expect(await prisma.user.count({ where: { email: "someone-new@example.test" } })).toBe(0);
   });
 
