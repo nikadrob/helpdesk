@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, NavLink, useNavigate } from 'react-router'
 import ThemeToggle from '@/components/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { signOut, useSession } from '@/lib/auth-client'
+import { cn } from '@/lib/utils'
 
 export default function Navbar() {
   const { data: session } = useSession()
@@ -18,14 +19,29 @@ export default function Navbar() {
 
   return (
     <nav className="border-b bg-background">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link to="/" className="text-lg font-semibold">
-          HelpDesk
-        </Link>
+      <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
+        <div className="flex items-center gap-6">
+          <Link to="/" className="text-lg font-semibold">
+            HelpDesk
+          </Link>
+          {session?.user.role === 'ADMIN' && (
+            <NavLink
+              to="/users"
+              className={({ isActive }) =>
+                cn(
+                  'text-sm transition-colors hover:text-foreground',
+                  isActive ? 'font-medium text-foreground' : 'text-muted-foreground',
+                )
+              }
+            >
+              Users
+            </NavLink>
+          )}
+        </div>
         <div className="flex items-center gap-4">
           {session && (
             <>
-              <span className="text-sm text-muted-foreground">{session.user.name}</span>
+              <span className="hidden text-sm text-muted-foreground sm:inline">{session.user.name}</span>
               <Button variant="outline" onClick={handleSignOut} disabled={signingOut}>
                 {signingOut ? 'Signing out…' : 'Sign out'}
               </Button>

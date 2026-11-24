@@ -10,7 +10,7 @@ The full scope, features, SLA, and decisions are in [project-scope.md](project-s
 
 ## Status
 
-Phases 1 (project setup) and 2 (authentication) are done. Phase 3 (user management) is next.
+Phases 1 (project setup) and 2 (authentication) are done. Phase 3 (user management) has started: the admin-only `/users` page exists as a placeholder (heading only), with a navbar link for admins. There are no user API endpoints and no server-side role check yet.
 
 Work follows the phases in [implementation-plan.md](implementation-plan.md), in order. Work on one phase at a time. When a task is done, mark its checkbox (`- [x]`). Do not start work from a later phase unless asked.
 
@@ -23,11 +23,11 @@ Bun workspaces monorepo:
   - `src/App.tsx`: defines the routes and shows an API health banner on every page. It calls `/api/health` on load and handles four states: loading, ok, database down (503), and server unreachable. The banner uses theme colors and an icon per state (muted while loading, primary when ok, destructive when the database or server is down).
   - shadcn/ui (`components.json`: `base-nova` style on Base UI, neutral base color, lucide icons). Add components with `bunx --bun shadcn@latest add <name>`; they land in `src/components/ui/` and can be edited. The theme is the CSS variables in `src/index.css` (`:root` for light, `.dark` for dark): neutral grays with a blue primary (`blue-600` in light, `blue-500` in dark). Use theme colors (`bg-background`, `text-muted-foreground`, `text-destructive`, ...) instead of fixed Tailwind colors.
   - Import alias: `@/` maps to `src/` (in `tsconfig.json`, `tsconfig.app.json`, and `vite.config.ts`).
-  - `src/lib/auth-client.ts`: the Better Auth React client (`useSession`, `signIn`, `signOut`). It uses the default `/api/auth` path on the current origin.
-  - `src/components/ProtectedRoute.tsx`: layout route that redirects to `/login` when there is no session (passing the original path in `state.from`). Put routes that need a signed-in user inside it.
-  - `src/components/Navbar.tsx`: the top bar on every page: the HelpDesk label on the left; on the right the signed-in user's name, a Sign out button, and the theme switch (the switch also shows when signed out).
+  - `src/lib/auth-client.ts`: the Better Auth React client (`useSession`, `signIn`, `signOut`). It uses the default `/api/auth` path on the current origin. `role` and `isActive` are typed through `inferAdditionalFields`; keep them in sync with `user.additionalFields` on the server.
+  - `src/components/ProtectedRoute.tsx`: layout route that redirects to `/login` when there is no session (passing the original path in `state.from`). Put routes that need a signed-in user inside it. With `role="ADMIN"`, a signed-in user without that role is redirected to `/`.
+  - `src/components/Navbar.tsx`: the top bar on every page: the HelpDesk label and, for admins only, a Users link on the left; on the right the signed-in user's name (hidden on narrow screens), a Sign out button, and the theme switch (the switch also shows when signed out).
   - Light/dark theme: light by default. `src/lib/theme.ts` (`getTheme`, `setTheme`) toggles the `dark` class on `<html>` and saves the choice in `localStorage` (`theme`). `src/components/ThemeToggle.tsx` is the sun/moon button. An inline script in `client/index.html` applies the saved theme before React renders, so there is no flash.
-  - `src/pages/`: page components (`LoginPage`, `HomePage`, `NotFoundPage`). After sign-in, `LoginPage` redirects to `state.from` or `/`; a signed-in user who opens `/login` is redirected too.
+  - `src/pages/`: page components (`LoginPage`, `HomePage`, `UsersPage` (admin only), `NotFoundPage`). After sign-in, `LoginPage` redirects to `state.from` or `/`; a signed-in user who opens `/login` is redirected too.
 - `server/`: Express 5 + TypeScript, running on Bun
   - `src/index.ts`: starts the server
   - `src/app.ts`: the Express app and routes. `GET /api/health` returns `{ status, database }`: 200 when the database responds, 503 when it doesn't.
@@ -61,12 +61,12 @@ How it works:
 - **Same origin:** the client calls `/api/auth/*` on its own origin. Vite proxies it to the server in development, so the cookie is first-party and no CORS setup is needed. `TRUSTED_ORIGINS` (default `http://localhost:5173`) lists the origins Better Auth accepts requests from; set it for each deployed client URL. `BETTER_AUTH_URL` is the server's public base URL.
 - **Who can sign in:** there is no public sign-up. Users are created with `upsertUserWithPassword` (`src/auth/users.ts`): the seed creates the first admin now, and the admin UI will in Phase 3. It normalizes the email (trim, lowercase), hashes the password with Better Auth's own hasher, and stores it in the `credential` `Account`. Upserting reactivates a user and resets their password.
 - **Deactivation:** a deactivated user (`isActive = false`) can't sign in, because the session-create hook refuses it. `requireAuth` also rejects existing sessions of deactivated users, so it takes effect on their next request. When deactivating a user (Phase 3), also delete their sessions.
-- **Roles:** `role` (`ADMIN` | `AGENT`, default `AGENT`) and `isActive` are Better Auth additional fields with `input: false`, so clients can't set them through auth endpoints. Role checks (admin-only routes) are Phase 3 and must be done on the server.
+- **Roles:** `role` (`ADMIN` | `AGENT`, default `AGENT`) and `isActive` are Better Auth additional fields with `input: false`, so clients can't set them through auth endpoints. The client hides admin-only pages (`ProtectedRoute` with `role="ADMIN"`), but there is no admin middleware on the server yet. Add one before the first admin-only endpoint (Phase 3).
 
 How to use it:
 - **Protect an API route:** add the `requireAuth` middleware, then read `req.user` (`id`, `email`, `name`, `role`, `isActive`). It responds `401 { error: "Unauthorized" }` when there is no valid session.
-- **Protect a page:** put its `<Route>` inside the `<Route element={<ProtectedRoute />}>` group in `App.tsx`. This only affects the UI; the API must still use `requireAuth`.
-- **Current user in the UI:** `const { data: session, isPending } = useSession()` from `@/lib/auth-client`; `session.user.name` etc. It updates automatically after sign-in and sign-out.
+- **Protect a page:** put its `<Route>` inside the `<Route element={<ProtectedRoute />}>` group in `App.tsx`, or in the `<ProtectedRoute role="ADMIN" />` group for admin-only pages. This only affects the UI; the API must still use `requireAuth`, plus a server-side role check for admin-only endpoints.
+- **Current user in the UI:** `const { data: session, isPending } = useSession()` from `@/lib/auth-client`; `session.user.name`, `session.user.role`, etc. It updates automatically after sign-in and sign-out.
 - **Error messages:** the login form shows the same "Invalid email or password." for a wrong password, an unknown email, and a deactivated account, so it doesn't reveal which accounts exist. Keep it that way.
 
 Gotchas:
@@ -93,6 +93,8 @@ Run these from the repo root:
 - `cd server && bun test`: run server tests (the auth tests need the database running)
 
 Setup: copy `server/.env.example` to `server/.env` and set `BETTER_AUTH_SECRET` (`openssl rand -base64 32`). Bun loads `.env` automatically.
+
+Test agent (local development only): `test@example.com`, role `AGENT`. Its credentials are in `server/.env` as `TEST_AGENT_EMAIL`, `TEST_AGENT_PASSWORD`, and `TEST_AGENT_NAME`. The app doesn't read these variables and the seed doesn't create this user, so a fresh setup doesn't have it. Don't copy the password into tracked files.
 
 Database: PostgreSQL 18 runs either as a local Windows service (`postgresql-x64-18`, installed with winget) or in Docker (`bun run db:up`). Both use the same connection string: user `helpdesk`, password `helpdesk`, database `helpdesk`, on `localhost:5432`. The `helpdesk` role has `CREATEDB`, which `prisma migrate dev` needs for its shadow database.
 

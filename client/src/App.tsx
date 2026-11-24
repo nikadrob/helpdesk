@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute.tsx'
 import HomePage from './pages/HomePage.tsx'
 import LoginPage from './pages/LoginPage.tsx'
 import NotFoundPage from './pages/NotFoundPage.tsx'
+import UsersPage from './pages/UsersPage.tsx'
 
 type Health = { status: string; database: string }
 
@@ -42,6 +43,9 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<HomePage />} />
+        </Route>
+        <Route element={<ProtectedRoute role="ADMIN" />}>
+          <Route path="/users" element={<UsersPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
