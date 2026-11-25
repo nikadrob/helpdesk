@@ -50,7 +50,10 @@ export default function LoginPage() {
     if (error) {
       // Same message for a wrong password, unknown email, or deactivated user,
       // so the form doesn't reveal which accounts exist.
-      setServerError(error.status === 0 ? 'Cannot reach the server.' : 'Invalid email or password.')
+      // The attempt limit applies to unknown emails too, so its message doesn't reveal them either.
+      if (error.status === 0) setServerError('Cannot reach the server.')
+      else if (error.status === 429) setServerError('Too many sign-in attempts. Please try again later.')
+      else setServerError('Invalid email or password.')
       return
     }
 

@@ -9,7 +9,7 @@ type UpsertUserInput = {
   role: Role;
 };
 
-// Creates or updates a user with an email/password login.
+// Creates or updates a user with an email/password login. Updating resets the password and ends all sessions.
 // Public sign-up is disabled, so this is how users get created (seed now, admin UI in Phase 3).
 export async function upsertUserWithPassword({ email, name, password, role }: UpsertUserInput) {
   const normalizedEmail = email.trim().toLowerCase();
@@ -18,29 +18,35 @@ export async function upsertUserWithPassword({ email, name, password, role }: Up
   const ctx = await auth.$context;
   const passwordHash = await ctx.password.hash(password);
 
-  const user = await prisma.user.upsert({
-    where: { email: normalizedEmail },
-    create: { email: normalizedEmail, name, role },
-    update: { name, role, isActive: true },
-  });
-
-  // Email/password logins live in a "credential" account.
-  const account = await prisma.account.findFirst({
-    where: { userId: user.id, providerId: "credential" },
-  });
-  if (account) {
-    await prisma.account.update({ where: { id: account.id }, data: { password: passwordHash } });
-  } else {
-    await prisma.account.create({
-      data: {
-        id: crypto.randomUUID(),
-        userId: user.id,
-        accountId: user.id,
-        providerId: "credential",
-        password: passwordHash,
-      },
+  // All or nothing, so a failure can't leave a reactivated user with the old password.
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.upsert({
+      where: { email: normalizedEmail },
+      create: { email: normalizedEmail, name, role },
+      update: { name, role, isActive: true },
     });
-  }
 
-  return user;
+    // Email/password logins live in a "credential" account.
+    const account = await tx.account.findFirst({
+      where: { userId: user.id, providerId: "credential" },
+    });
+    if (account) {
+      await tx.account.update({ where: { id: account.id }, data: { password: passwordHash } });
+    } else {
+      await tx.account.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId: user.id,
+          accountId: user.id,
+          providerId: "credential",
+          password: passwordHash,
+        },
+      });
+    }
+
+    // End existing sessions: whoever had access with the old password must sign in again.
+    await tx.session.deleteMany({ where: { userId: user.id } });
+
+    return user;
+  });
 }

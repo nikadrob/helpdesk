@@ -139,6 +139,74 @@ describe("auth flow", () => {
     expect((await getMe(cookie)).status).toBe(401);
   });
 
+  test("resetting a password ends existing sessions", async () => {
+    const cookie = sessionCookie(await signIn());
+    expect((await getMe(cookie)).status).toBe(200);
+
+    const password = "new-correct-horse-battery";
+    await upsertUserWithPassword({ email: EMAIL, name: "Auth Test", password, role: "AGENT" });
+    expect((await getMe(cookie)).status).toBe(401);
+    expect((await signIn()).status).toBe(401); // old password
+    expect((await signIn(EMAIL, password)).status).toBe(200);
+  });
+
+  test("too many attempts for an email are blocked, even with the right password", async () => {
+    const email = `limit-${crypto.randomUUID()}@example.test`;
+    await upsertUserWithPassword({ email, name: "Limit Test", password: PASSWORD, role: "AGENT" });
+    try {
+      for (let i = 0; i < 9; i++) expect((await signIn(email, "wrong-password")).status).toBe(401);
+      expect((await signIn(email)).status).toBe(200); // a success clears the count
+      for (let i = 0; i < 10; i++) expect((await signIn(email, "wrong-password")).status).toBe(401);
+      expect((await signIn(email.toUpperCase())).status).toBe(429);
+    } finally {
+      await prisma.user.deleteMany({ where: { email } });
+    }
+  });
+
+  test("unknown emails are limited the same way", async () => {
+    const email = `unknown-${crypto.randomUUID()}@example.test`;
+    for (let i = 0; i < 10; i++) expect((await signIn(email)).status).toBe(401);
+    expect((await signIn(email)).status).toBe(429);
+  });
+
+  test("oversized auth requests are rejected", async () => {
+    const res = await post("/api/auth/sign-in/email", { email: EMAIL, password: PASSWORD, pad: "a".repeat(64 * 1024) });
+    expect(res.status).toBe(413);
+  });
+
+  test("auth requests without a declared length are rejected", async () => {
+    const body = new ReadableStream({
+      async pull(controller) {
+        controller.enqueue(new TextEncoder().encode("{}"));
+        await Bun.sleep(10);
+        controller.close();
+      },
+    });
+    const res = await fetch(`${baseUrl}/api/auth/sign-in/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: ORIGIN },
+      body,
+    });
+    expect(res.status).toBe(411);
+  });
+
+  test("a client can't choose its own IP address", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/sign-in/email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: ORIGIN,
+        "X-Forwarded-For": "203.0.113.7",
+        "X-HelpDesk-Client-IP": "203.0.113.7",
+      },
+      body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    });
+    expect(res.status).toBe(200);
+    const session = await prisma.session.findFirstOrThrow({ where: { user: { email: EMAIL } } });
+    expect(session.ipAddress).toBeTruthy();
+    expect(session.ipAddress).not.toContain("203.0.113.7");
+  });
+
   test("forged session cookie is rejected", async () => {
     const res = await getMe("better-auth.session_token=not-a-real-token.fake-signature");
     expect(res.status).toBe(401);
