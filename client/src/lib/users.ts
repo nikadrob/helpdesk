@@ -1,3 +1,5 @@
+import { queryOptions } from '@tanstack/react-query'
+import { api } from '@/lib/api'
 import type { UserRole } from '@/lib/auth-client'
 
 // A user as returned by GET /api/users (admin only).
@@ -10,9 +12,10 @@ export type User = {
   createdAt: string
 }
 
-export async function fetchUsers(signal?: AbortSignal): Promise<User[]> {
-  const res = await fetch('/api/users', { signal })
-  if (!res.ok) throw new Error(`GET /api/users failed with status ${res.status}`)
-  const { users } = (await res.json()) as { users: User[] }
-  return users
-}
+export const usersQuery = queryOptions({
+  queryKey: ['users'],
+  queryFn: async ({ signal }) => {
+    const { data } = await api.get<{ users: User[] }>('/users', { signal })
+    return data.users
+  },
+})

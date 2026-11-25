@@ -19,15 +19,17 @@ Work follows the phases in [implementation-plan.md](implementation-plan.md), in 
 Bun workspaces monorepo:
 
 - `client/`: React 19 + TypeScript (Vite 8), Tailwind CSS v4 (through the `@tailwindcss/vite` plugin, no config file), React Router (declarative mode with `BrowserRouter`)
-  - `src/main.tsx`: wraps the app in `BrowserRouter`
-  - `src/App.tsx`: defines the routes and shows an API health banner on every page. It calls `/api/health` on load and handles four states: loading, ok, database down (503), and server unreachable. The banner uses theme colors and an icon per state (muted while loading, primary when ok, destructive when the database or server is down).
+  - `src/main.tsx`: wraps the app in `QueryClientProvider` and `BrowserRouter`
+  - `src/App.tsx`: defines the routes and shows an API health banner on every page. It uses `healthQuery` (`src/lib/health.ts`) and handles four states: loading, ok, database down (503), and server unreachable. The banner uses theme colors and an icon per state (muted while loading, primary when ok, destructive when the database or server is down).
   - shadcn/ui (`components.json`: `base-nova` style on Base UI, neutral base color, lucide icons). Add components with `bunx --bun shadcn@latest add <name>`; they land in `src/components/ui/` and can be edited. The theme is the CSS variables in `src/index.css` (`:root` for light, `.dark` for dark): neutral grays with a blue primary (`blue-600` in light, `blue-500` in dark). Use theme colors (`bg-background`, `text-muted-foreground`, `text-destructive`, ...) instead of fixed Tailwind colors.
   - Import alias: `@/` maps to `src/` (in `tsconfig.json`, `tsconfig.app.json`, and `vite.config.ts`).
   - `src/lib/auth-client.ts`: the Better Auth React client (`useSession`, `signIn`, `signOut`). It uses the default `/api/auth` path on the current origin. `role` and `isActive` are typed through `inferAdditionalFields`; keep them in sync with `user.additionalFields` on the server.
   - `src/components/ProtectedRoute.tsx`: layout route that redirects to `/login` when there is no session (passing the original path in `state.from`). Put routes that need a signed-in user inside it. With `role="ADMIN"`, a signed-in user without that role is redirected to `/`.
   - `src/components/Navbar.tsx`: the top bar on every page: the HelpDesk label and, for admins only, a Users link on the left; on the right the signed-in user's name (hidden on narrow screens), a Sign out button, and the theme switch (the switch also shows when signed out).
   - Light/dark theme: light by default. `src/lib/theme.ts` (`getTheme`, `setTheme`) toggles the `dark` class on `<html>` and saves the choice in `localStorage` (`theme`). `src/components/ThemeToggle.tsx` is the sun/moon button. An inline script in `client/index.html` applies the saved theme before React renders, so there is no flash.
-  - `src/lib/users.ts`: the `User` type and `fetchUsers` (`GET /api/users`).
+  - `src/lib/api.ts`: the shared axios instance (`api`, base URL `/api`). It rejects on non-2xx statuses (unless `validateStatus` says otherwise) and on invalid JSON.
+  - `src/lib/query-client.ts`: the TanStack Query client. Queries retry once, but not on 4xx. `clearUserData` drops all cached user data; it runs on sign-in and sign-out, so one user never sees another's data.
+  - `src/lib/users.ts`: the `User` type and `usersQuery` (`GET /api/users`).
   - `src/pages/`: page components (`LoginPage`, `HomePage`, `UsersPage` (admin only: a table of all users, including deactivated ones), `NotFoundPage`). After sign-in, `LoginPage` redirects to `state.from` or `/`; a signed-in user who opens `/login` is redirected too.
 - `server/`: Express 5 + TypeScript, running on Bun
   - `src/index.ts`: starts the server
@@ -47,7 +49,7 @@ Bun workspaces monorepo:
   - The Prisma 7 config is in `server/prisma.config.ts`, and the generated client goes to `server/src/generated/prisma` (git-ignored). Import it from `./generated/prisma/client.ts`, not from `@prisma/client`.
 - `docker-compose.yml`: optional PostgreSQL in Docker
 
-In development, Vite proxies `/api/*` to the server on port 3000, so the client calls the API with relative URLs (`fetch('/api/...')`).
+In development, Vite proxies `/api/*` to the server on port 3000, so the client calls the API on its own origin. Use the shared axios instance for this (`api.get('/users')` requests `/api/users`), not `fetch` or a bare `axios` import. Load server data with TanStack Query: define the query with `queryOptions` in `src/lib/` (see `users.ts`), pass its `signal` to axios, and call `useQuery` in the component. Don't fetch in `useEffect`.
 
 Schema notes:
 - Enum values are uppercase (`OPEN`, `IN_PROGRESS`, `COURSE_CONTENT`, `URGENT`, ...). They map to the domain names in the Domain Reference below.
@@ -113,7 +115,7 @@ Database admin (local development only, for pgAdmin and administrative tasks): u
 
 The stack is defined in [tech-stack.md](tech-stack.md). Stick to it, and ask before adding a new framework or major library.
 
-- **Frontend:** React + TypeScript, Tailwind CSS, React Router, shadcn/ui, React Hook Form + Zod (forms and validation, through `@hookform/resolvers`)
+- **Frontend:** React + TypeScript, Tailwind CSS, React Router, shadcn/ui, React Hook Form + Zod (forms and validation, through `@hookform/resolvers`), axios (API calls), TanStack Query (server data and caching)
 - **Backend:** Express + TypeScript on the Bun runtime (Bun is also the package manager and test runner), with authentication through Better Auth (`better-auth`, pinned to 1.7.27) using database sessions (not JWT)
 - **Database:** PostgreSQL with Prisma
 - **AI:** Claude API (Anthropic SDK, `@anthropic-ai/sdk`)

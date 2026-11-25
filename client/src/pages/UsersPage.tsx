@@ -1,54 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { fetchUsers, type User } from '@/lib/users'
-
-type UsersState =
-  | { kind: 'loading' }
-  | { kind: 'ok'; users: User[] }
-  | { kind: 'error' }
+import { usersQuery, type User } from '@/lib/users'
 
 const dateFormat = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' })
 
 export default function UsersPage() {
-  const [state, setState] = useState<UsersState>({ kind: 'loading' })
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    const controller = new AbortController()
-
-    fetchUsers(controller.signal)
-      .then((users) => setState({ kind: 'ok', users }))
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ kind: 'error' })
-      })
-
-    return () => controller.abort()
-  }, [attempt])
-
-  function retry() {
-    setState({ kind: 'loading' })
-    setAttempt((n) => n + 1)
-  }
+  const { data: users, isPending, isError, isFetching, refetch } = useQuery(usersQuery)
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
       <h1 className="text-2xl font-bold">Users</h1>
       <div className="mt-6">
-        {state.kind === 'loading' && <p className="text-sm text-muted-foreground">Loading users…</p>}
-        {state.kind === 'error' && (
+        {isPending && <p className="text-sm text-muted-foreground">Loading users…</p>}
+        {/* Also hides a list loaded earlier, for example when the user is no longer an admin. */}
+        {isError && (
           <div className="flex flex-col items-start gap-4">
             <Alert variant="destructive">
               <AlertDescription>Could not load users.</AlertDescription>
             </Alert>
-            <Button variant="outline" onClick={retry}>
-              Try again
+            <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
+              {isFetching ? 'Trying again…' : 'Try again'}
             </Button>
           </div>
         )}
-        {state.kind === 'ok' && <UsersTable users={state.users} />}
+        {users && !isError && <UsersTable users={users} />}
       </div>
     </main>
   )

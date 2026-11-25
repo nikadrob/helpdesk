@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
 import { CircleCheck, CircleX, LoaderCircle, TriangleAlert, type LucideIcon } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
+import { healthQuery } from '@/lib/health'
 import { cn } from '@/lib/utils'
 import Navbar from './components/Navbar.tsx'
 import ProtectedRoute from './components/ProtectedRoute.tsx'
@@ -9,35 +11,10 @@ import LoginPage from './pages/LoginPage.tsx'
 import NotFoundPage from './pages/NotFoundPage.tsx'
 import UsersPage from './pages/UsersPage.tsx'
 
-type Health = { status: string; database: string }
-
-type HealthState =
-  | { kind: 'loading' }
-  | { kind: 'ok'; health: Health }
-  | { kind: 'error' }
-
 export default function App() {
-  const [state, setState] = useState<HealthState>({ kind: 'loading' })
-
-  useEffect(() => {
-    const controller = new AbortController()
-
-    fetch('/api/health', { signal: controller.signal })
-      // The API returns JSON with status 503 when the database is down,
-      // so read the body for both 200 and 503.
-      .then((res) => res.json() as Promise<Health>)
-      .then((health) => setState({ kind: 'ok', health }))
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setState({ kind: 'error' })
-      })
-
-    return () => controller.abort()
-  }, [])
-
   return (
     <>
-      <HealthMessage state={state} />
+      <HealthMessage />
       <Navbar />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -72,8 +49,10 @@ function Banner({ tone, icon: Icon, children }: { tone: BannerTone; icon: Lucide
   )
 }
 
-function HealthMessage({ state }: { state: HealthState }) {
-  if (state.kind === 'loading') {
+function HealthMessage() {
+  const { data: health, isPending, isError } = useQuery(healthQuery)
+
+  if (isPending) {
     return (
       <Banner tone="muted" icon={LoaderCircle}>
         Checking API…
@@ -81,7 +60,8 @@ function HealthMessage({ state }: { state: HealthState }) {
     )
   }
 
-  if (state.kind === 'error') {
+  // Checked before the data: after a failed refetch, the old data is still there.
+  if (isError) {
     return (
       <Banner tone="destructive" icon={CircleX}>
         Cannot reach the API. Is the server running?
@@ -89,7 +69,6 @@ function HealthMessage({ state }: { state: HealthState }) {
     )
   }
 
-  const { health } = state
   if (health.status === 'ok') {
     return (
       <Banner tone="primary" icon={CircleCheck}>

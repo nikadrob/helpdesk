@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router'
 import ThemeToggle from '@/components/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { signOut, useSession } from '@/lib/auth-client'
+import { clearUserData } from '@/lib/query-client'
 import { cn } from '@/lib/utils'
 
 export default function Navbar() {
@@ -15,6 +16,7 @@ export default function Navbar() {
     await signOut()
     setSigningOut(false)
     navigate('/login', { replace: true })
+    clearUserData()
   }
 
   return (

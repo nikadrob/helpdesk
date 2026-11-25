@@ -7,6 +7,8 @@
 - shadcn/ui (Base UI primitives, default `base-nova` style, neutral theme)
 - React Router
 - React Hook Form with Zod for forms and validation
+- axios for API calls
+- TanStack Query for loading and caching server data
 
 ## Backend
 
