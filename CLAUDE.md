@@ -10,7 +10,7 @@ The full scope, features, SLA, and decisions are in [project-scope.md](project-s
 
 ## Status
 
-Phases 1 (project setup) and 2 (authentication) are done. Phase 3 (user management) has started: the admin-only `/users` page exists as a placeholder (heading only), with a navbar link for admins. There are no user API endpoints and no server-side role check yet.
+Phases 1 (project setup) and 2 (authentication) are done. Phase 3 (user management) has started: the admin-only user list is done (`/users` page and `GET /api/users`), with a server-side role check. Creating, editing, and deactivating users are not built yet.
 
 Work follows the phases in [implementation-plan.md](implementation-plan.md), in order. Work on one phase at a time. When a task is done, mark its checkbox (`- [x]`). Do not start work from a later phase unless asked.
 
@@ -27,7 +27,8 @@ Bun workspaces monorepo:
   - `src/components/ProtectedRoute.tsx`: layout route that redirects to `/login` when there is no session (passing the original path in `state.from`). Put routes that need a signed-in user inside it. With `role="ADMIN"`, a signed-in user without that role is redirected to `/`.
   - `src/components/Navbar.tsx`: the top bar on every page: the HelpDesk label and, for admins only, a Users link on the left; on the right the signed-in user's name (hidden on narrow screens), a Sign out button, and the theme switch (the switch also shows when signed out).
   - Light/dark theme: light by default. `src/lib/theme.ts` (`getTheme`, `setTheme`) toggles the `dark` class on `<html>` and saves the choice in `localStorage` (`theme`). `src/components/ThemeToggle.tsx` is the sun/moon button. An inline script in `client/index.html` applies the saved theme before React renders, so there is no flash.
-  - `src/pages/`: page components (`LoginPage`, `HomePage`, `UsersPage` (admin only), `NotFoundPage`). After sign-in, `LoginPage` redirects to `state.from` or `/`; a signed-in user who opens `/login` is redirected too.
+  - `src/lib/users.ts`: the `User` type and `fetchUsers` (`GET /api/users`).
+  - `src/pages/`: page components (`LoginPage`, `HomePage`, `UsersPage` (admin only: a table of all users, including deactivated ones), `NotFoundPage`). After sign-in, `LoginPage` redirects to `state.from` or `/`; a signed-in user who opens `/login` is redirected too.
 - `server/`: Express 5 + TypeScript, running on Bun
   - `src/index.ts`: starts the server
   - `src/app.ts`: the Express app and routes. `GET /api/health` returns `{ status, database }`: 200 when the database responds, 503 when it doesn't.
@@ -36,9 +37,10 @@ Bun workspaces monorepo:
   - `src/auth/auth.ts`: the Better Auth instance (email/password, database sessions through the Prisma adapter, no cookie cache). Public sign-up is disabled (`/api/auth/sign-up/email` returns 404 through `disabledPaths`), `role` and `isActive` are server-only user fields, and a session hook blocks sign-in for deactivated users. Its handler is mounted at `/api/auth/*` in `app.ts`, **before** `express.json()`. Endpoints: `POST /api/auth/sign-in/email`, `POST /api/auth/sign-out`, `GET /api/auth/get-session`.
   - `src/auth/requestGuards.ts`: middleware that runs before the Better Auth handler: `limitAuthBody` (refuses bodies over 64 KB or without a declared length) and `setClientIp` (passes `req.ip` to Better Auth in a header that clients can't override).
   - `src/auth/signInLimiter.ts`: the per-email sign-in limit, used by hooks in `auth.ts`.
-  - `src/auth/middleware.ts`: `requireAuth` checks the session with `auth.api.getSession` and sets `req.user`. `GET /api/me` is an example protected route.
+  - `src/auth/middleware.ts`: `requireAuth` checks the session with `auth.api.getSession` and sets `req.user`. `requireAdmin` (use after `requireAuth`) responds `403 { error: "Forbidden" }` to non-admins. `GET /api/me` is an example protected route.
   - `src/auth/users.ts`: `upsertUserWithPassword` creates or updates a user with a credential account (public sign-up is disabled). Used by the seed and the tests. Updating also ends the user's sessions.
   - `src/auth/auth.test.ts`: integration tests for the auth flow. They need the database running and clean up their own test user.
+  - `src/users/router.ts`: the admin-only users API, mounted at `/api/users`. `requireAuth` and `requireAdmin` apply to the whole router. `GET /` returns `{ users }` with `id`, `name`, `email`, `role`, `isActive`, `createdAt`, ordered by name. `users.test.ts` next to it has the integration tests.
 - `server/prisma/`:
   - `schema.prisma`: the database schema (`User`, `Session`, `Account`, `Verification`, `Ticket`). `Session`, `Account`, and `Verification` follow Better Auth's core schema. After changing auth config or plugins, check that the schema still matches what Better Auth expects.
   - `migrations/`: migration history. Commit it, and never edit an applied migration.
@@ -64,11 +66,11 @@ How it works:
 - **Who can sign in:** there is no public sign-up. Users are created with `upsertUserWithPassword` (`src/auth/users.ts`): the seed creates the first admin. The admin UI (Phase 3) needs its own strict create. The function normalizes the email (trim, lowercase), hashes the password with Better Auth's own hasher, and stores it in the `credential` `Account`. Upserting reactivates a user, resets their password, and ends all their sessions, in one transaction. Don't use it for "create user" in the admin UI: with an existing email it would reset that person's account.
 - **Sign-in limits:** per IP, 3 attempts per 10 seconds (Better Auth's rate limiter, off only when `NODE_ENV=test`); per email, 10 attempts per 15 minutes, cleared by a successful sign-in and applied to unknown emails too. Both respond 429. Both are kept in memory, so running several server instances needs shared storage. Behind a reverse proxy, set `TRUST_PROXY` (hop count or IPs/CIDRs); otherwise all users share the proxy's IP and its limit.
 - **Deactivation:** a deactivated user (`isActive = false`) can't sign in, because the session-create hook refuses it. `requireAuth` also rejects existing sessions of deactivated users, so it takes effect on their next request. When deactivating a user (Phase 3), also delete their sessions.
-- **Roles:** `role` (`ADMIN` | `AGENT`, default `AGENT`) and `isActive` are Better Auth additional fields with `input: false`, so clients can't set them through auth endpoints. The client hides admin-only pages (`ProtectedRoute` with `role="ADMIN"`), but there is no admin middleware on the server yet. Add one before the first admin-only endpoint (Phase 3).
+- **Roles:** `role` (`ADMIN` | `AGENT`, default `AGENT`) and `isActive` are Better Auth additional fields with `input: false`, so clients can't set them through auth endpoints. The client hides admin-only pages (`ProtectedRoute` with `role="ADMIN"`), and the server enforces it with `requireAdmin`. The role is read from the database on every request, so demoting an admin takes effect at once.
 
 How to use it:
-- **Protect an API route:** add the `requireAuth` middleware, then read `req.user` (`id`, `email`, `name`, `role`, `isActive`). It responds `401 { error: "Unauthorized" }` when there is no valid session.
-- **Protect a page:** put its `<Route>` inside the `<Route element={<ProtectedRoute />}>` group in `App.tsx`, or in the `<ProtectedRoute role="ADMIN" />` group for admin-only pages. This only affects the UI; the API must still use `requireAuth`, plus a server-side role check for admin-only endpoints.
+- **Protect an API route:** add the `requireAuth` middleware, then read `req.user` (`id`, `email`, `name`, `role`, `isActive`). It responds `401 { error: "Unauthorized" }` when there is no valid session. For an admin-only route, add `requireAdmin` after it.
+- **Protect a page:** put its `<Route>` inside the `<Route element={<ProtectedRoute />}>` group in `App.tsx`, or in the `<ProtectedRoute role="ADMIN" />` group for admin-only pages. This only affects the UI; the API must still use `requireAuth`, plus `requireAdmin` for admin-only endpoints.
 - **Current user in the UI:** `const { data: session, isPending } = useSession()` from `@/lib/auth-client`; `session.user.name`, `session.user.role`, etc. It updates automatically after sign-in and sign-out.
 - **Error messages:** the login form shows the same "Invalid email or password." for a wrong password, an unknown email, and a deactivated account, so it doesn't reveal which accounts exist. Keep it that way. A 429 shows "Too many sign-in attempts. Please try again later."
 

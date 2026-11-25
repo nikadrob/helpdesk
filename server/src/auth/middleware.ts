@@ -19,3 +19,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   req.user = session.user;
   next();
 }
+
+// Use after requireAuth. The role comes from the database on every request,
+// so demoting an admin takes effect at once.
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.role !== "ADMIN") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  next();
+}

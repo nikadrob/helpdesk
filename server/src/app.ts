@@ -5,6 +5,7 @@ import { auth } from "./auth/auth.ts";
 import { requireAuth } from "./auth/middleware.ts";
 import { limitAuthBody, setClientIp } from "./auth/requestGuards.ts";
 import { env } from "./env.ts";
+import { usersRouter } from "./users/router.ts";
 
 export const app = express();
 
@@ -28,3 +29,5 @@ app.get("/api/health", async (_req, res) => {
 app.get("/api/me", requireAuth, (req, res) => {
   res.json({ user: req.user });
 });
+
+app.use("/api/users", usersRouter);
